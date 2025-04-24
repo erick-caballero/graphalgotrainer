@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Graph Algorithm Trainer</title>
+  <style>
+    *{box-sizing:border-box;font-family:Arial,Helvetica,sans-serif}
+    body{margin:0;padding:1rem;background:#111827;color:#f9fafb;display:flex;flex-direction:column;align-items:center;gap:1rem}
+    h1{margin:0;font-size:1.5rem}
+    #controls{display:flex;gap:.5rem;flex-wrap:wrap}
+    select,button,input{padding:.5rem 1rem;border-radius:.5rem;border:none;font-size:1rem}
+    button{cursor:pointer;background:#2563eb;color:#fff;transition:background .2s}
+    button:hover{background:#1d4ed8}
+    #message{min-height:1.5rem;font-weight:700}
+    svg{background:#1f2937;border-radius:1rem;box-shadow:0 4px 8px rgba(0,0,0,.4)}
+    .node{fill:#6b7280;stroke:#f9fafb;stroke-width:2;transition:fill .3s}
+    .node.start{fill:#facc15}
+    .node.visited{fill:#10b981}
+    .edge{stroke:#374151;stroke-width:2}
+    .edge.visited{stroke:#10b981;stroke-width:3}
+    .weight{fill:#fef08a;font-size:12px}
+  </style>
+</head>
+<body>
+  <h1>Graph Algorithm Trainer</h1>
+  <div id="controls">
+    <label>
+      Algorithm:
+      <select id="algoType">
+        <option value="bfs">BFS (order of vertices)</option>
+        <option value="dfs">DFS (order of vertices)</option>
+        <option value="dijkstra">Dijkstra (order vertices finalized)</option>
+        <option value="prim">Prim (order of edges in MST)</option>
+        <option value="kruskal">Kruskal (order of edges in MST)</option>
+      </select>
+    </label>
+    <button id="newGraphBtn">New Graph</button>
+  </div>
+  <div id="prompt"></div>
+  <svg id="graph" width="420" height="420"></svg>
+  <div id="inputArea">
+    <input id="answerInput" type="text" placeholder="Enter answer here" size="40" autocomplete="off">
+    <button id="submitBtn">Submit</button>
+  </div>
+  <div id="message"></div>
+
+<script>
+(()=>{
+  const svg=document.getElementById('graph');
+  const algoSelect=document.getElementById('algoType');
+  const newBtn=document.getElementById('newGraphBtn');
+  const submitBtn=document.getElementById('submitBtn');
+  const answerInput=document.getElementById('answerInput');
+  const msg=document.getElementById('message');
+  const promptDiv=document.getElementById('prompt');
+
+  let nodes=[],edges=[],weights={},correctAnswer,startNode,highlightEdges=new Set(),highlightNodes=new Set();
+  const letters='abcdefgh'.split('');
+
+  function randInt(a,b){return Math.floor(Math.random()*(b-a+1))+a}
+
+  function createNodes(){
+    const n=randInt(6,8);
+    const angleOffset=Math.random()*2*Math.PI;
+    const cx=210,cy=210,r=160;
+    nodes=[];
+    for(let i=0;i<n;i++){
+      const ang=angleOffset+2*Math.PI*i/n;
+      nodes.push({id:i,label:letters[i],x:cx+r*Math.cos(ang),y:cy+r*Math.sin(ang)});
+    }
+  }
+
+  function addEdge(u,v){edges.push([u,v]);weights[key(u,v)]=randInt(1,9)}
+  function key(u,v){return u<v?`${u}-${v}`:`${v}-${u}`}
+
+  function connectGraph(algo){
+    const n=nodes.length;edges=[];weights={};
+    for(let i=0;i<n-1;i++) addEdge(i,i+1);
+    for(let i=0;i<n;i++) for(let j=i+2;j<n;j++) if(Math.random()<.35) addEdge(i,j);
+    if(algo==='bfs'||algo==='dfs'){
+      let incident=edges.filter(e=>e[0]===0||e[1]===0);
+      while(incident.length>2){
+        const rem=incident.pop();edges=edges.filter(e=>!(e[0]===rem[0]&&e[1]===rem[1]));
+        incident=edges.filter(e=>e[0]===0||e[1]===0);
+      }
+    }
+  }
+
+  function buildAdj(){const adj=Array.from({length:nodes.length},()=>[]);
+    edges.forEach(([u,v])=>{const w=weights[key(u,v)];adj[u].push([v,w]);adj[v].push([u,w]);});
+    return adj;
+  }
+
+  let adj;
+  function bfs(start){const vis=Array(nodes.length).fill(false),q=[start],order=[];vis[start]=true;while(q.length){const u=q.shift();order.push(nodes[u].label);for(const [v] of adj[u])if(!vis[v]){vis[v]=true;q.push(v);highlightEdges.add(key(u,v))}}return order.join('')}
+  function dfs(start){const vis=Array(nodes.length).fill(false),order=[];function rec(u){vis[u]=true;order.push(nodes[u].label);for(const [v] of adj[u])if(!vis[v]){highlightEdges.add(key(u,v));rec(v)}}rec(start);return order.join('')}
+  function dijkstra(){const n=nodes.length,dist=Array(n).fill(Infinity),pq=[],visitedOrder=[];dist[startNode]=0;pq.push([0,startNode]);while(pq.length){pq.sort((a,b)=>a[0]-b[0]||nodes[a[1]].label.localeCompare(nodes[b[1]].label));const [d,u]=pq.shift();if(d!==dist[u])continue;visitedOrder.push(nodes[u].label);highlightNodes.add(u);for(const [v,w] of adj[u]){if(dist[v]>d+w){dist[v]=d+w;pq.push([dist[v],v]);highlightEdges.add(key(u,v));}}}return visitedOrder.join('')}
+  function prim(){const n=nodes.length,vis=Array(n).fill(false);vis[startNode]=true;const pq=[];for(const [v,w] of adj[startNode])pq.push([w,startNode,v]);const mst=[];while(pq.length){pq.sort((a,b)=>a[0]-b[0]||nodes[a[1]].label.localeCompare(nodes[b[1]].label));const [w,u,v]=pq.shift();if(vis[v])continue;vis[v]=true;mst.push(labelEdge(u,v));highlightEdges.add(key(u,v));for(const [nv,nw] of adj[v])if(!vis[nv])pq.push([nw,v,nv]);}return mst.join(',');}
+  function kruskal(){const parent=Array(nodes.length).fill(0).map((_,i)=>i);
+    function find(x){return parent[x]===x?x:parent[x]=find(parent[x]);}
+    function union(a,b){parent[find(a)]=find(b);}
+    const edgeList=[...edges].map(([u,v])=>({u,v,w:weights[key(u,v)],label:labelEdge(u,v)}));
+    edgeList.sort((e1,e2)=>e1.w-e2.w||e1.label.localeCompare(e2.label));
+    const result=[];
+    edgeList.forEach(e=>{if(find(e.u)!==find(e.v)){union(e.u,e.v);result.push(e.label);highlightEdges.add(key(e.u,e.v));}});
+    return result.join(' ');
+  }
+  function labelEdge(u,v){return nodes[u].label < nodes[v].label ? nodes[u].label+nodes[v].label : nodes[v].label+nodes[u].label;}
+
+  function draw(showHighlights=false){svg.innerHTML='';
+    const showWeights=['dijkstra','prim','kruskal'].includes(algoSelect.value);
+    edges.forEach(([u,v])=>{const line=document.createElementNS('http://www.w3.org/2000/svg','line');line.setAttribute('x1',nodes[u].x);line.setAttribute('y1',nodes[u].y);line.setAttribute('x2',nodes[v].x);line.setAttribute('y2',nodes[v].y);line.classList.add('edge');if(showHighlights&&highlightEdges.has(key(u,v)))line.classList.add('visited');svg.appendChild(line);
+      if(showWeights){const midx=(nodes[u].x+nodes[v].x)/2,midy=(nodes[u].y+nodes[v].y)/2;const wt=document.createElementNS('http://www.w3.org/2000/svg','text');wt.setAttribute('x',midx);wt.setAttribute('y',midy-4);wt.setAttribute('class','weight');wt.setAttribute('text-anchor','middle');wt.textContent=weights[key(u,v)];svg.appendChild(wt);}  
+    });
+    nodes.forEach(n=>{const g=document.createElementNS('http://www.w3.org/2000/svg','g');const c=document.createElementNS('http://www.w3.org/2000/svg','circle');c.setAttribute('cx',n.x);c.setAttribute('cy',n.y);c.setAttribute('r',20);c.classList.add('node');if(n.id===startNode)c.classList.add('start');if(showHighlights&&(highlightNodes.has(n.id)||correctAnswer.includes(n.label)))c.classList.add('visited');g.appendChild(c);const t=document.createElementNS('http://www.w3.org/2000/svg','text');t.setAttribute('x',n.x);t.setAttribute('y',n.y+5);t.setAttribute('fill','#f9fafb');t.setAttribute('font-size','16');t.setAttribute('text-anchor','middle');t.textContent=n.label.toUpperCase();g.appendChild(t);svg.appendChild(g);});
+  }
+
+  function newGraph(){highlightEdges.clear();highlightNodes.clear();createNodes();connectGraph(algoSelect.value);adj=buildAdj();startNode=0;
+    let promptText='';
+    switch(algoSelect.value){
+      case'bfs':correctAnswer=bfs(startNode);promptText=`Run BFS starting at highlighted vertex ${nodes[startNode].label.toUpperCase()} and list vertices in visit order.`;break;
+      case'dfs':correctAnswer=dfs(startNode);promptText=`Run DFS starting at highlighted vertex ${nodes[startNode].label.toUpperCase()} and list vertices in visit order.`;break;
+      case'dijkstra':correctAnswer=dijkstra();promptText=`Run Dijkstra’s algorithm starting at highlighted vertex ${nodes[startNode].label.toUpperCase()} and list vertices as their shortest path becomes final.`;break;
+      case'prim':correctAnswer=prim();promptText=`Run Prim’s algorithm starting at highlighted vertex ${nodes[startNode].label.toUpperCase()} and list edges (e.g. AB,AC) in the order they join the MST.`;break;
+      case'kruskal':correctAnswer=kruskal();promptText=`Run Kruskal’s algorithm. List edges added to the MST, space-separated, vertices in alphabetical order (e.g. AF AE FG).`;break;
+    }
+    promptDiv.textContent=promptText;
+    draw();
+    answerInput.value='';
+    msg.textContent='';
+  }
+
+  function normalizeEdgeInput(str){return (str.toLowerCase().replace(/[^a-h]/g,'').match(/.{1,2}/g)||[]);}
+  function normalizeVertices(str){return str.toLowerCase().replace(/[^a-h]/g,'');}
+
+  function check(){let ok=false;const algo=algoSelect.value;
+    if(algo==='prim'||algo==='kruskal'){
+      const userEdges=normalizeEdgeInput(answerInput.value);
+      const correctEdges=algo==='prim'?correctAnswer.split(','):correctAnswer.split(' ');
+      ok=userEdges.length===correctEdges.length&&userEdges.every((e,i)=>e===correctEdges[i].toLowerCase());
+    }else{
+      ok=normalizeVertices(answerInput.value)===correctAnswer.toLowerCase();
+    }
+    msg.textContent=ok?'✅ Correct!':`❌ Incorrect. Correct: ${correctAnswer.toUpperCase()}`;
+    draw(true);
+  }
+
+  newBtn.addEventListener('click',newGraph);
+  submitBtn.addEventListener('click',check);
+  answerInput.addEventListener('keydown',e=>{if(e.key==='Enter')check()});
+  newGraph();
+})();
+</script>
+</body>
+</html>
