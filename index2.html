@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>Graph Algorithm Trainer</title>
+  <style>
+    * { box-sizing:border-box; font-family:Arial,Helvetica,sans-serif }
+    body { margin:0; padding:1rem; background:#111827; color:#f9fafb;
+           display:flex; flex-direction:column; align-items:center; gap:1rem }
+    h1 { margin:0; font-size:1.5rem }
+    #controls { display:flex; gap:.5rem; flex-wrap:wrap }
+    select,button,input { padding:.5rem 1rem; border-radius:.5rem; border:none; font-size:1rem }
+    button { cursor:pointer; background:#2563eb; color:#fff; transition:background .2s }
+    button:hover { background:#1d4ed8 }
+    #message { min-height:1.5rem; font-weight:700 }
+    svg { background:#1f2937; border-radius:1rem; box-shadow:0 4px 8px rgba(0,0,0,.4) }
+    .node { fill:#6b7280; stroke:#f9fafb; stroke-width:2; transition:fill .3s }
+    .node.start { fill:#facc15 }
+    .node.visited { fill:#10b981 }
+    .edge { stroke:#374151; stroke-width:2; stroke-linecap:round }
+    .edge.visited { stroke:#10b981; stroke-width:3 }
+    .weight { fill:#fef08a; font-size:12px }
+  </style>
+</head>
+<body>
+  <h1>Graph Algorithm Trainer</h1>
+  <div id="controls">
+    <label>
+      Algorithm:
+      <select id="algoType">
+        <option value="bfs">BFS</option>
+        <option value="dfs">DFS</option>
+        <option value="dijkstra">Dijkstra</option>
+        <option value="prim">Prim MST</option>
+        <option value="kruskal">Kruskal MST</option>
+      </select>
+    </label>
+    <button id="newGraphBtn">New Graph</button>
+  </div>
+  <div id="prompt"></div>
+  <svg id="graph" width="420" height="420"></svg>
+  <div id="inputArea">
+    <input id="answerInput" type="text" placeholder="Enter answer here" size="40" autocomplete="off">
+    <button id="submitBtn">Submit</button>
+  </div>
+  <div id="message"></div>
+
+<script>
+(() => {
+  const svg = document.getElementById('graph');
+  const algoSelect = document.getElementById('algoType');
+  const newBtn = document.getElementById('newGraphBtn');
+  const submitBtn = document.getElementById('submitBtn');
+  const answerInput = document.getElementById('answerInput');
+  const msg = document.getElementById('message');
+  const promptDiv = document.getElementById('prompt');
+
+  let nodes = [], edges = [], weights = {}, adj = [];
+  let correctAnswer = '', startNode = 0;
+  let highlightEdges = new Set(), highlightNodes = new Set();
+  const letters = 'abcdefgh'.split('');
+
+  function randInt(a,b){ return Math.floor(Math.random()*(b-a+1))+a; }
+  function key(u,v){ return u<v?`${u}-${v}`:`${v}-${u}`; }
+  function labelEdge(u,v){
+    return nodes[u].label < nodes[v].label
+      ? nodes[u].label + nodes[v].label
+      : nodes[v].label + nodes[u].label;
+  }
+
+  // 1) Place nodes on a √n×√n grid, randomly assigning positions
+  function createNodes() {
+    const n = randInt(6,8);
+    const gridSize = Math.ceil(Math.sqrt(n));
+    const cell = 120, W = 420, H = 420;
+    const offsetX = (W - (gridSize-1)*cell)/2;
+    const offsetY = (H - (gridSize-1)*cell)/2;
+
+    const all = [];
+    for(let r=0;r<gridSize;r++){
+      for(let c=0;c<gridSize;c++){
+        all.push({r,c});
+      }
+    }
+    // shuffle all cells
+    for(let i=all.length-1;i>0;i--){
+      const j = Math.floor(Math.random()*(i+1));
+      [all[i],all[j]] = [all[j],all[i]];
+    }
+    const chosen = all.slice(0, n);
+
+    nodes = chosen.map(({r,c}, i) => ({
+      id: i,
+      label: letters[i],
+      x: offsetX + c*cell,
+      y: offsetY + r*cell,
+      row: r,
+      col: c
+    }));
+    startNode = 0; // always 'A'
+  }
+
+  // 2) Connect only "king‐move" neighbors, build random spanning tree + extras
+  function connectGraph(algo) {
+    edges = []; weights = {};
+    const n = nodes.length;
+
+    const neighbors = {};
+    nodes.forEach(u => {
+      neighbors[u.id] = nodes
+        .filter(v => {
+          const dr = Math.abs(u.row - v.row),
+                dc = Math.abs(u.col - v.col);
+          return (dr<=1&&dc<=1) && (dr+dc>0);
+        })
+        .map(v => v.id);
+    });
+
+    const visited = new Set();
+    (function dfs(u){
+      visited.add(u);
+      neighbors[u].sort((a,b) =>
+        nodes[a].label.localeCompare(nodes[b].label)
+      ).forEach(v => {
+        if(!visited.has(v)) {
+          edges.push([u,v]);
+          weights[key(u,v)] = randInt(1,9);
+          dfs(v);
+        }
+      });
+    })(startNode);
+
+    if(algo==='bfs'||algo==='dfs'){
+      let inc = edges.filter(e=>e[0]===startNode||e[1]===startNode);
+      inc.sort((a,b)=>{
+        const la = labelEdge(...a), lb = labelEdge(...b);
+        return la.localeCompare(lb);
+      });
+      while(inc.length>2){
+        const rem = inc.pop();
+        edges = edges.filter(e=>!(e[0]===rem[0]&&e[1]===rem[1]));
+        delete weights[key(rem[0],rem[1])];
+      }
+    }
+
+    nodes.forEach(u => {
+      neighbors[u.id].forEach(v => {
+        const k = key(u.id,v);
+        if(!weights[k] && Math.random()<0.35){
+          edges.push([u.id,v]);
+          weights[k] = randInt(1,9);
+        }
+      });
+    });
+  }
+
+  // 3) Build adjacency and sort each list alphabetically
+  function buildAdj(){
+    adj = Array.from({length:nodes.length},()=>[]);
+    edges.forEach(([u,v])=>{
+      const w = weights[key(u,v)];
+      adj[u].push([v,w]);
+      adj[v].push([u,w]);
+    });
+    // sort neighbors by label
+    adj.forEach(list =>
+      list.sort((a,b) =>
+        nodes[a[0]].label.localeCompare(nodes[b[0]].label)
+      )
+    );
+  }
+
+  // 4) Algorithms with tie‐breaking
+
+  function bfs(start){
+    const seen = Array(nodes.length).fill(false), q=[start], order=[];
+    seen[start]=true;
+    while(q.length){
+      const u=q.shift();
+      order.push(nodes[u].label);
+      adj[u].forEach(([v])=>{
+        if(!seen[v]){
+          seen[v]=true;
+          highlightEdges.add(key(u,v));
+          q.push(v);
+        }
+      });
+    }
+    return order.join('');
+  }
+
+  function dfs(start){
+    const seen = Array(nodes.length).fill(false), order=[];
+    (function rec(u){
+      seen[u]=true;
+      order.push(nodes[u].label);
+      adj[u].forEach(([v])=>{
+        if(!seen[v]){
+          highlightEdges.add(key(u,v));
+          rec(v);
+        }
+      });
+    })(start);
+    return order.join('');
+  }
+
+  function dijkstra(){
+    const n=nodes.length,
+          dist=Array(n).fill(Infinity),
+          pq=[], result=[];
+    dist[startNode]=0; pq.push([0,startNode]);
+    while(pq.length){
+      pq.sort((a,b)=>
+        a[0]-b[0] ||
+        nodes[a[1]].label.localeCompare(nodes[b[1]].label)
+      );
+      const [d,u]=pq.shift();
+      if(d!==dist[u]) continue;
+      result.push(nodes[u].label);
+      highlightNodes.add(u);
+      adj[u].forEach(([v,w])=>{
+        if(dist[v]>d+w){
+          dist[v]=d+w;
+          pq.push([dist[v],v]);
+          highlightEdges.add(key(u,v));
+        }
+      });
+    }
+    return result.join('');
+  }
+
+  function prim(){
+    const n=nodes.length,
+          used=Array(n).fill(false),
+          pq=[], mst=[];
+    used[startNode]=true;
+    adj[startNode].forEach(([v,w])=>pq.push([w,startNode,v]));
+    while(pq.length){
+      pq.sort((a,b)=>
+        a[0]-b[0] ||
+        labelEdge(a[1],a[2]).localeCompare(labelEdge(b[1],b[2]))
+      );
+      const [w,u,v]=pq.shift();
+      if(used[v]) continue;
+      used[v]=true;
+      highlightEdges.add(key(u,v));
+      mst.push(labelEdge(u,v));
+      adj[v].forEach(([nv,nw])=>{ if(!used[nv]) pq.push([nw,v,nv]); });
+    }
+    return mst.join(',');
+  }
+
+  function kruskal(){
+    const parent=nodes.map((_,i)=>i),
+          find=x=>parent[x]===x?x:parent[x]=find(parent[x]),
+          union=(a,b)=>parent[find(a)]=find(b);
+    const list = edges.map(([u,v])=>({
+      u,v,w:weights[key(u,v)],
+      label: labelEdge(u,v)
+    })).sort((a,b)=>
+      a.w - b.w ||
+      a.label.localeCompare(b.label)
+    );
+    const out=[];
+    list.forEach(e=>{
+      if(find(e.u)!==find(e.v)){
+        union(e.u,e.v);
+        highlightEdges.add(key(e.u,e.v));
+        out.push(e.label);
+      }
+    });
+    return out.join(' ');
+  }
+
+  // 5) Draw, shifting weights along the line
+  function draw(showHighlights=false){
+    svg.innerHTML='';
+    const showW = ['dijkstra','prim','kruskal'].includes(algoSelect.value);
+
+    edges.forEach(([u,v])=>{
+      const x1=nodes[u].x, y1=nodes[u].y,
+            x2=nodes[v].x, y2=nodes[v].y;
+      const line = document.createElementNS('http://www.w3.org/2000/svg','line');
+      line.setAttribute('x1',x1); line.setAttribute('y1',y1);
+      line.setAttribute('x2',x2); line.setAttribute('y2',y2);
+      line.classList.add('edge');
+      if(showHighlights && highlightEdges.has(key(u,v))) {
+        line.classList.add('visited');
+      }
+      svg.appendChild(line);
+
+      if(showW){
+        const dx = x2 - x1, dy = y2 - y1;
+        const len = Math.hypot(dx,dy)||1, ux=dx/len, uy=dy/len;
+        const mx=(x1+x2)/2, my=(y1+y2)/2;
+        const offset = 12*(Math.random()<0.5?1:-1);
+        const tx = mx + ux*offset, ty = my + uy*offset;
+        const t = document.createElementNS('http://www.w3.org/2000/svg','text');
+        t.setAttribute('x',tx); t.setAttribute('y',ty-4);
+        t.setAttribute('class','weight'); t.setAttribute('text-anchor','middle');
+        t.textContent = weights[key(u,v)];
+        svg.appendChild(t);
+      }
+    });
+
+    nodes.forEach(n=>{
+      const g = document.createElementNS('http://www.w3.org/2000/svg','g');
+      const c = document.createElementNS('http://www.w3.org/2000/svg','circle');
+      c.setAttribute('cx',n.x); c.setAttribute('cy',n.y); c.setAttribute('r',20);
+      c.classList.add('node');
+      if(n.id===startNode) c.classList.add('start');
+      if(showHighlights && (highlightNodes.has(n.id) || correctAnswer.includes(n.label))) {
+        c.classList.add('visited');
+      }
+      g.appendChild(c);
+
+      const txt = document.createElementNS('http://www.w3.org/2000/svg','text');
+      txt.setAttribute('x',n.x); txt.setAttribute('y',n.y+5);
+      txt.setAttribute('fill','#f9fafb');
+      txt.setAttribute('font-size','16');
+      txt.setAttribute('text-anchor','middle');
+      txt.textContent = n.label.toUpperCase();
+      g.appendChild(txt);
+
+      svg.appendChild(g);
+    });
+  }
+
+  function normalizeEdgeInput(str){
+    return (str.toLowerCase().replace(/[^a-h]/g,'').match(/.{1,2}/g)||[]);
+  }
+  function normalizeVertices(str){
+    return str.toLowerCase().replace(/[^a-h]/g,'');
+  }
+
+  function check(){
+    let ok=false;
+    const algo=algoSelect.value;
+    if(algo==='prim'||algo==='kruskal'){
+      const ue=normalizeEdgeInput(answerInput.value),
+            ce = algo==='prim'
+              ? correctAnswer.split(',')
+              : correctAnswer.split(' ');
+      ok = ue.length===ce.length
+        && ue.every((e,i)=>e===ce[i].toLowerCase());
+    } else {
+      ok = normalizeVertices(answerInput.value) === correctAnswer.toLowerCase();
+    }
+    msg.textContent = ok
+      ? '✅ Correct!'
+      : `❌ Incorrect. Correct: ${correctAnswer.toUpperCase()}`;
+    draw(true);
+  }
+
+  function newGraph(){
+    highlightEdges.clear();
+    highlightNodes.clear();
+    createNodes();
+    connectGraph(algoSelect.value);
+    buildAdj();
+
+    switch(algoSelect.value){
+      case 'bfs':
+        correctAnswer = bfs(startNode);
+        promptDiv.textContent = `Run BFS starting at ${letters[startNode].toUpperCase()}.`;
+        break;
+      case 'dfs':
+        correctAnswer = dfs(startNode);
+        promptDiv.textContent = `Run DFS starting at ${letters[startNode].toUpperCase()}.`;
+        break;
+      case 'dijkstra':
+        correctAnswer = dijkstra();
+        promptDiv.textContent = `Run Dijkstra starting at ${letters[startNode].toUpperCase()}.`;
+        break;
+      case 'prim':
+        correctAnswer = prim();
+        promptDiv.textContent = `Run Prim’s MST starting at ${letters[startNode].toUpperCase()}.`;
+        break;
+      case 'kruskal':
+        correctAnswer = kruskal();
+        promptDiv.textContent = `Run Kruskal’s MST.`;
+        break;
+    }
+
+    draw();
+    answerInput.value = '';
+    msg.textContent = '';
+  }
+
+  newBtn.addEventListener('click', newGraph);
+  submitBtn.addEventListener('click', check);
+  answerInput.addEventListener('keydown', e=>{ if(e.key==='Enter') check(); });
+
+  newGraph();
+})();
+</script>
+</body>
+</html>
